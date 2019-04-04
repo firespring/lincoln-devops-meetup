@@ -1,0 +1,101 @@
+---
+Description: Policy which requires 2FA login to access AWS resources and example group/user
+Resources:
+  Require2FALoginPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: Require2FALogin
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+        - Sid: AllowUserToSeeIAMDashboard
+          Effect: Allow
+          Action:
+          - iam:GetAccountSummary
+          - iam:GetAccountPasswordPolicy
+          - iam:GetPolicyVersion
+          - iam:GetServiceLastAccessedDetails
+          - iam:ListAccountAliases
+          - iam:ListUsers
+          - iam:ListGroups
+          - iam:ListGroupPolicies
+          - iam:ListAttachedGroupPolicies
+          - iam:ListPolicies
+          - iam:ListVirtualMFADevices
+          Resource: "*"
+
+        - Sid: AllowUserToSeeTheirAccountInfo
+          Effect: Allow
+          Action:
+          - iam:List*
+          - iam:Get*
+          - iam:GenerateServiceLastAccessedDetails
+          Resource: !Sub arn:aws:iam::${AWS::AccountId}:user/${!aws:username}
+
+        - Sid: AllowUserToManageTheirLogin
+          Effect: Allow
+          Action:
+          - iam:ChangePassword
+          - iam:*LoginProfile
+          Resource: !Sub arn:aws:iam::${AWS::AccountId}:user/${!aws:username}
+
+        - Sid: AllowUserToManageTheirKeys
+          Effect: Allow
+          Action:
+          - iam:*AccessKey*
+          - iam:*SSHPublicKey*
+          Resource: !Sub arn:aws:iam::${AWS::AccountId}:user/${!aws:username}
+
+        - Sid: AllowUserToManageThier2FA
+          Effect: Allow
+          Action:
+          - iam:CreateVirtualMFADevice
+          - iam:DeactivateMFADevice
+          - iam:DeleteVirtualMFADevice
+          - iam:EnableMFADevice
+          - iam:ListMFADevices
+          - iam:ResyncMFADevice
+          Resource:
+          - !Sub arn:aws:iam::${AWS::AccountId}:mfa/${!aws:username}
+          - !Sub arn:aws:iam::${AWS::AccountId}:user/${!aws:username}
+
+        - Sid: DoNotAllowAnythingOtherThanAboveUnlessMFAd
+          Effect: Deny
+          NotAction: iam:*
+          Resource: "*"
+          Condition:
+            'Null':
+              aws:MultiFactorAuthAge: 'true'
+
+  TestGroup:
+    Type: AWS::IAM::Group
+    Properties:
+      GroupName: test_read_only
+      ManagedPolicyArns:
+      - !Ref Require2FALoginPolicy
+      - arn:aws:iam::aws:policy/AmazonEC2ReadOnlyAccess
+
+  CloudwatchReadonlyPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: cloudwatch_readonly
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+        - Effect: Allow
+          Action:
+          - cloudwatch:Describe*
+          - cloudwatch:Get*
+          - cloudwatch:List*
+          - sns:Get*
+          - sns:List*
+          Resource: "*"
+      Groups:
+      - !Ref TestGroup
+
+  TestUser:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: test.user
+      Groups:
+      - !Ref TestGroup
